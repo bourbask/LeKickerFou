@@ -28,8 +28,12 @@ const CONFIG_FILE: &str = "bot_config.json";
 #[derive(Parser, Debug)]
 #[command(name = "lekickerfou")]
 #[command(version = "1.0.0")]
-#[command(about = "Bot Discord pour déconnecter automatiquement les utilisateurs des salons vocaux")]
-#[command(long_about = "Bot Discord qui surveille un salon vocal et déconnecte automatiquement tous les utilisateurs présents selon un planning configurable. Parfait pour forcer la fermeture d'un salon à certaines heures.")]
+#[command(
+    about = "Bot Discord pour déconnecter automatiquement les utilisateurs des salons vocaux"
+)]
+#[command(
+    long_about = "Bot Discord qui surveille un salon vocal et déconnecte automatiquement tous les utilisateurs présents selon un planning configurable. Parfait pour forcer la fermeture d'un salon à certaines heures."
+)]
 #[command(after_help = "EXEMPLES:\n  \
     # Configuration initiale\n  \
     lekickerfou --channel 123456789\n\n  \
@@ -48,7 +52,7 @@ FICHIERS:\n  \
 struct Args {
     /// ID du salon vocal à surveiller (obligatoire pour une nouvelle configuration)
     #[arg(
-        short = 'c', 
+        short = 'c',
         long = "channel",
         help = "ID du salon vocal à surveiller",
         long_help = "ID numérique du salon vocal Discord à surveiller. Tous les utilisateurs connectés à ce salon seront automatiquement déconnectés selon le planning défini."
@@ -57,7 +61,7 @@ struct Args {
 
     /// ID du salon de log pour enregistrer les déconnexions (optionnel)
     #[arg(
-        short = 'l', 
+        short = 'l',
         long = "log-channel",
         help = "ID du salon de log (optionnel)",
         long_help = "ID numérique du salon Discord où seront envoyés les messages de log des déconnexions. Si non spécifié, seuls les logs console seront affichés."
@@ -66,8 +70,8 @@ struct Args {
 
     /// Expression cron pour définir quand vérifier le salon vocal
     #[arg(
-        short = 's', 
-        long = "schedule", 
+        short = 's',
+        long = "schedule",
         default_value = "0 * * * * *",
         help = "Expression cron pour la fréquence de vérification",
         long_help = "Expression cron définissant quand vérifier et déconnecter les utilisateurs. Par défaut '0 * * * * *' (toutes les minutes). Exemples: '*/30 * * * * *' (toutes les 30 secondes), '0 0 22 * * *' (tous les jours à 22h)."
@@ -76,8 +80,8 @@ struct Args {
 
     /// Chemin vers le fichier de configuration JSON
     #[arg(
-        short = 'f', 
-        long = "config-file", 
+        short = 'f',
+        long = "config-file",
         default_value = CONFIG_FILE,
         help = "Chemin vers le fichier de configuration",
         long_help = "Chemin vers le fichier JSON contenant la configuration du bot. Le fichier sera créé automatiquement s'il n'existe pas. Permet d'avoir plusieurs configurations différentes."
@@ -111,8 +115,7 @@ struct Args {
 async fn import_configuration(source_file: &str, target_file: &str) -> Result<()> {
     if !Path::new(source_file).exists() {
         return Err(BotError::InvalidConfig(format!(
-            "Fichier de configuration introuvable: {}",
-            source_file
+            "Fichier de configuration introuvable: {source_file}"
         ))
         .into());
     }
@@ -128,8 +131,7 @@ async fn import_configuration(source_file: &str, target_file: &str) -> Result<()
     fs::copy(source_file, target_file).context("Impossible d'importer la configuration")?;
 
     log_info(&format!(
-        "✅ Configuration importée de {} vers {}",
-        source_file, target_file
+        "✅ Configuration importée de {source_file} vers {target_file}"
     ));
 
     println!("\n📋 Configuration active :");
@@ -213,8 +215,7 @@ impl EventHandler for Bot {
 
         if let Err(err) = self.start_voice_monitoring(ctx).await {
             log_error(&format!(
-                "Erreur lors du démarrage de la surveillance: {}",
-                err
+                "Erreur lors du démarrage de la surveillance: {err}"
             ));
         }
     }
@@ -244,12 +245,11 @@ impl Bot {
                     Ok(disconnected_count) => {
                         if disconnected_count > 0 {
                             log_info(&format!(
-                                "{} utilisateur(s) déconnecté(s)",
-                                disconnected_count
+                                "{disconnected_count} utilisateur(s) déconnecté(s)"
                             ));
                         }
                     }
-                    Err(e) => log_error(&format!("Erreur lors de la vérification: {}", e)),
+                    Err(e) => log_error(&format!("Erreur lors de la vérification: {e}")),
                 }
             })
         })
@@ -375,9 +375,9 @@ impl VoiceChannelManager {
         member
             .disconnect_from_voice(ctx)
             .await
-            .context(format!("Échec de la déconnexion de {}", user_tag))?;
+            .context(format!("Échec de la déconnexion de {user_tag}"))?;
 
-        log_info(&format!("✅ {} déconnecté avec succès", user_tag));
+        log_info(&format!("✅ {user_tag} déconnecté avec succès"));
         Ok(())
     }
 
@@ -391,10 +391,10 @@ impl VoiceChannelManager {
         channel_name: &str,
     ) {
         if let Some(log_channel_id) = self.config.log_channel_id {
-            let log_message = format!("🔇 {} déconnecté du salon '{}'", user_tag, channel_name);
+            let log_message = format!("🔇 {user_tag} déconnecté du salon '{channel_name}'");
 
             if let Err(e) = log_channel_id.say(ctx, log_message).await {
-                log_error(&format!("Impossible d'envoyer le log Discord: {}", e));
+                log_error(&format!("Impossible d'envoyer le log Discord: {e}"));
             }
         }
     }
@@ -513,8 +513,7 @@ fn save_configuration(config: &BotConfig, file_path: &str) -> Result<()> {
 async fn export_configuration(source_file: &str, target_file: &str) -> Result<()> {
     if !Path::new(source_file).exists() {
         return Err(BotError::InvalidConfig(format!(
-            "Aucune configuration à exporter depuis {}",
-            source_file
+            "Aucune configuration à exporter depuis {source_file}"
         ))
         .into());
     }
@@ -522,8 +521,7 @@ async fn export_configuration(source_file: &str, target_file: &str) -> Result<()
     fs::copy(source_file, target_file).context("Impossible d'exporter la configuration")?;
 
     log_info(&format!(
-        "✅ Configuration exportée de {} vers {}",
-        source_file, target_file
+        "✅ Configuration exportée de {source_file} vers {target_file}"
     ));
 
     // Afficher le contenu pour vérification
@@ -540,7 +538,7 @@ async fn export_configuration(source_file: &str, target_file: &str) -> Result<()
     );
     println!("   • Planning: {}", config.cron_schedule);
     println!("\n💡 Pour utiliser cette config ailleurs :");
-    println!("   ./lekickerfou --import {}", target_file);
+    println!("   ./lekickerfou --import {target_file}");
 
     Ok(())
 }
@@ -550,14 +548,14 @@ async fn export_configuration(source_file: &str, target_file: &str) -> Result<()
  */
 fn get_discord_token() -> Result<String> {
     env::var("DISCORD_TOKEN")
-        .or_else(|_| {
+        .map_err(|_| {
             println!("❓ Token Discord non trouvé dans DISCORD_TOKEN.");
             println!("💡 Vous pouvez :");
             println!("   1. Créer un fichier .env avec DISCORD_TOKEN=votre_token");
             println!("   2. Exporter la variable: export DISCORD_TOKEN=votre_token");
             println!("   3. Lancer avec: DISCORD_TOKEN=votre_token ./lekickerfou");
 
-            Err(BotError::MissingConfig("Token Discord requis".to_string()))
+            BotError::MissingConfig("Token Discord requis".to_string())
         })
         .context("Token Discord manquant")
 }

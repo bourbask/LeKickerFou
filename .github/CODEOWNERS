@@ -1,0 +1,15 @@
+# Global owners
+* @bourbask
+
+# Rust specific
+*.rs @bourbask
+Cargo.toml @bourbask
+Cargo.lock @bourbask
+
+# CI/CD
+.github/ @bourbask
+
+# Config files
+*.json @bourbask
+*.yaml @bourbask
+*.yml @bourbask

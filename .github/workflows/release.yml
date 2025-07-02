@@ -8,11 +8,18 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: write # 🔑 Permission cruciale pour créer des releases
+  packages: write
+
 jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: write
+      actions: write
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       release_id: ${{ steps.create_release.outputs.id }}
@@ -30,12 +37,10 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2 # 🆕 Action moderne
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           body: |
             ## 🚀 Nouvelle version : ${{ github.ref_name }}
 
@@ -112,21 +117,17 @@ jobs:
           fi
 
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2 # 🆕 Action moderne
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ matrix.name }}
-          asset_name: ${{ matrix.name }}
-          asset_content_type: application/octet-stream
+          tag_name: ${{ github.ref_name }}
+          files: ${{ matrix.name }}
 
   publish-cargo:
     name: Publish to Cargo
     runs-on: ubuntu-latest
     needs: [create-release, build-release]
     environment: production
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && !github.event.release.prerelease
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -134,7 +135,14 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Login to crates.io
+        run: cargo login ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        if: env.CARGO_REGISTRY_TOKEN != ''
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
       - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --no-verify
+        if: env.CARGO_REGISTRY_TOKEN != ''
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

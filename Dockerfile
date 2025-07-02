@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.75-alpine AS builder
+FROM rust:alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static
@@ -22,7 +22,7 @@ COPY src ./src
 RUN touch src/main.rs && cargo build --release
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:latest
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata
@@ -42,9 +42,6 @@ RUN chown -R app:app /app
 
 # Switch to app user
 USER app
-
-# Expose port (if needed)
-# EXPOSE 8080
 
 # Set entrypoint
 ENTRYPOINT ["./lekickerfou"]

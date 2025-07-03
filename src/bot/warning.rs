@@ -11,29 +11,37 @@ use crate::{config::BotConfig, utils::{log_error, log_info}};
 
 /// Collection de GIFs d'avertissement à rotation aléatoire
 const WARNING_GIFS: &[&str] = &[
-    "https://media.giphy.com/media/l3q2XhfQ8oCkm1Ts4/giphy.gif", // Homer Simpson qui dort
-    "https://media.giphy.com/media/BLmBG0HPIoaoo/giphy.gif",     // Chat qui baille
-    "https://media.giphy.com/media/3og0IMJcSI8p6hYQXS/giphy.gif", // Personne qui s'endort devant un ordi
-    "https://media.giphy.com/media/KbhCl6QjGhsf48CvPW/giphy.gif", // Réveil qui sonne
-    "https://media.giphy.com/media/l0MYOrDnJFJZT6NdC/giphy.gif",  // "Time to sleep" 
-    "https://media.giphy.com/media/xT9IgAINmcY6UwRQc0/giphy.gif", // Horloge qui tourne
-    "https://media.giphy.com/media/nnFwGHgE4Mk5W/giphy.gif",     // Bébé qui dort paisiblement
-    "https://media.giphy.com/media/3o7ZeQBhbVGnELP4bK/giphy.gif", // "Good night" vintage
+    "https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMmFrcjYxdzF1cjBmZjRxa3hoanFncG92bjhydXg2dWF3cTE2cnF4NyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/mguPrVJAnEHIY/giphy.gif", // disney-disney-gif-pinocchio-jiminy-cricket
+    "https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExeHdsa2p3MDF3OHBteWUzZW9zcXc1OTV4cjRrbXZpZDUyY3RqeGM2NyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Bn9Wp6ryjMc9Qn1J9C/giphy.gif",     // travisband-travis-gnite-andy-dunlop
+    "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExbWIxdXh2N3k0anV0cmVpbjJlZWs0YWYzbHZiZno5dDlhN210cWNjcyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/ikckY3A4yfgX8IMrqr/giphy.gif", // uncanny-danny-go-to-sleep
+    "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNXdkbWU3eGtqY29hNGowNzMwYmljanpkcjVxZmE0cTEzdmQ4bW44YyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/6cozGW0B5vZWQvAzfz/giphy.gif", // cameo-tired-sleep-parent
+    "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExYWNkdDRsMzc0ZmczMmJzOGI2NHp3N3pzbG96b3M5Ynh1dWprNGt2NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/F0jAJOCyI1kA/giphy.gif",  // WWE "Time to sleep" 
+    "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZXc2b2h1bmE0azZodGNheTl0bTlxZ2ZvMnVycjA1MmEwZWMwZnVteSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uGRvUhuW1qdTrsMsj0/giphy.gif", // CoolCats-closed-shut-stay-out
+    "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExdzIxYTZ4NGEycDNuc2RwaWdtMzdmMDE1N2k5cm04MjFmZTdncjQ5cSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/l3q2wMdhTXm84vbaw/giphy.gif",     // cbc-funny-comedy
+    "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExOTRnazhhcWFyeGEydXNsb2hzcXNzcHB0Ymc3Z3A3MXp2cTJwNXJsdCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/j2qhdPCYIrWen8fzyX/giphy.gif", // halloween-staff-halloween-costumes
 ];
 
 /// Messages d'avertissement à rotation aléatoire
 const WARNING_MESSAGES: &[&str] = &[
-    "🛏️ **C'est l'heure du dodo !** 🛏️\n\nL'heure du coucher a sonné ! Tous les noctambules encore en vocal, vous avez **{delay} secondes** pour dire bonne nuit avant que le marchand de sable ne vous emporte de force ! 😴✨",
+    "⏰ **Bon allez, c'est l'heure !** ⏰\n\nIl est temps de déconnecter les gars. Vous avez **{delay} secondes** pour partir avant que je vous vire moi-même du vocal !",
     
-    "🌙 **Alerte couvre-feu !** 🌙\n\nOyez oyez ! Il est maintenant l'heure officielle de rejoindre Morphée ! Les derniers résistants ont **{delay} secondes** pour quitter les lieux avant évacuation forcée ! 🚨💤",
+    "🚨 **Dernière chance !** 🚨\n\nSérieusement, il faut aller dormir maintenant. Dans **{delay} secondes**, je kick tout le monde sans exception. Vous êtes prévenus !",
     
-    "🕐 **Tic-tac, tic-tac...** 🕐\n\nLe temps s'écoule et vos paupières s'alourdissent... Plus que **{delay} secondes** avant que le bot ne vous aide à aller au lit ! (Que vous le vouliez ou non 😈)",
+    "😴 **Allez au lit bordel !** 😴\n\nÇa fait des heures que vous êtes là-dessus ! Plus que **{delay} secondes** pour quitter le vocal, sinon c'est moi qui vous déconnecte de force !",
     
-    "🧙‍♂️ **Sortilège de sommeil imminent !** 🧙‍♂️\n\nAttention mes chers insomniaques ! Dans **{delay} secondes**, un puissant sort de déconnexion sera lancé sur ce salon ! Fuyez tant qu'il est encore temps ! ⚡",
+    "🔇 **Extinction des feux dans {delay} secondes** 🔇\n\nTout le monde dégage du vocal ! Plus personne ne doit traîner ici après ça !",
     
-    "🎭 **Dernier appel avant la fermeture !** 🎭\n\nComme au théâtre : 'Mesdames et Messieurs, dans **{delay} secondes**, le rideau tombera sur ce salon vocal. Merci de récupérer vos affaires et de quitter tranquillement les lieux !' 🎪",
+    "⚡ **Coupage imminent !** ⚡\n\nVous connaissez la chanson : il est tard, vous devez dormir. **{delay} secondes** pour partir gentiment avant que ça devienne moins sympa !",
     
-    "🦸‍♂️ **Capitaine Couche-Tôt à votre service !** 🦸‍♂️\n\nJe vois encore des super-héros qui traînent dans les parages ! Vous avez **{delay} secondes** pour regagner votre QG (votre lit) avant que je n'intervienne ! 💪😴"
+    "🛑 **Stop, c'est fini !** 🛑\n\nLe vocal ferme dans **{delay} secondes**. Pas de négociation, pas d'exception. Tout le monde dehors !",
+    
+    "💀 **Vous allez morfler** 💀\n\nDans **{delay} secondes**, je vous dégage de là. Après dites pas que vous étiez pas prévenus !",
+    
+    "🎯 **Objectif : votre lit** 🎯\n\nVous avez **{delay} secondes** pour y aller par vous-mêmes. Sinon c'est moi qui vous aide à le retrouver !",
+    
+    "🔥 **Ça va chauffer !** 🔥\n\nDans **{delay} secondes**, je déconnecte tout ce petit monde. Maintenant vous savez ce qui vous attend !",
+    
+    "⚰️ **RIP vocal** ⚰️\n\nCe salon va mourir dans **{delay} secondes**. Évacuez tant qu'il est encore temps !"
 ];
 
 /// Gestionnaire des messages d'avertissement

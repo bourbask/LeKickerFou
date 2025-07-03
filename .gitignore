@@ -21,6 +21,7 @@ Cargo.lock
 bot_config.json
 *.config.json
 config/
+!src/**/config/
 
 # Log files
 *.log

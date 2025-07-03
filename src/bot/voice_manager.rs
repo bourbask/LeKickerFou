@@ -51,22 +51,28 @@ impl VoiceChannelManager {
 
         // Phase 1: Envoyer l'avertissement si configuré
         if self.config.has_warnings_enabled() {
+            log_info("Envoi de l'avertissement...");
+
             let warning_sent = self
                 .warning_manager
                 .send_warning(ctx, &members, &guild_channel.name)
                 .await;
 
             if warning_sent {
+                log_info("Avertissement envoyé, début de l'attente...");
+
                 // Attendre le délai configuré
                 self.warning_manager.wait_warning_delay().await;
 
+                log_info("Fin de l'attente");
+
                 // Vérifier si on doit s'arrêter là (mode warning-only)
                 if self.config.is_warning_only_mode() {
-                    log_info("Mode avertissement uniquement - Aucune déconnexion effectuée");
                     return Ok(0);
                 }
 
                 // Re-vérifier qui est encore présent après le délai
+                log_info("Vérification des membres restants...");
                 let remaining_members = self.get_voice_channel_members(ctx, &guild_channel).await?;
 
                 if remaining_members.is_empty() {
@@ -77,20 +83,24 @@ impl VoiceChannelManager {
                 }
 
                 log_info(&format!(
-                    "{} utilisateur(s) toujours présent(s) après l'avertissement - Début des déconnexions",
-                    remaining_members.len()
-                ));
+                "{} utilisateur(s) toujours présent(s) après l'avertissement - Début des déconnexions",
+                remaining_members.len()
+            ));
 
-                return self
+                let result = self
                     .disconnect_members(ctx, &remaining_members, &guild_channel.name)
                     .await;
+
+                return result;
             }
         }
 
         // Phase 2: Déconnexion directe (si pas d'avertissement ou échec d'envoi)
         if !self.config.is_warning_only_mode() {
-            self.disconnect_members(ctx, &members, &guild_channel.name)
-                .await
+            let result = self
+                .disconnect_members(ctx, &members, &guild_channel.name)
+                .await;
+            result
         } else {
             Ok(0)
         }

@@ -15,7 +15,7 @@ graph TD
     scheduler[Tokio Cron Job]
     voiceMgr[VoiceChannelManager]
     warnMgr[WarningManager]
-    utils[utils.rs (log + token)]
+    utils[utils.rs **log + token**]
 
     main --> config
     main --> utils

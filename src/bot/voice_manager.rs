@@ -16,37 +16,25 @@ use crate::{
     BotError,
 };
 
+use super::warning::WarningManager;
+
 /// Gestionnaire responsable de la surveillance et de la déconnexion des utilisateurs
 pub struct VoiceChannelManager {
     config: BotConfig,
+    warning_manager: WarningManager,
 }
 
 impl VoiceChannelManager {
     /// Crée une nouvelle instance du gestionnaire de salons vocaux
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Configuration contenant les paramètres du salon à surveiller
     pub fn new(config: BotConfig) -> Self {
-        Self { config }
+        let warning_manager = WarningManager::new(config.clone());
+        Self {
+            config,
+            warning_manager,
+        }
     }
 
-    /// Vérifie le salon vocal configuré et déconnecte les utilisateurs si nécessaire
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - Contexte Serenity pour les interactions Discord
-    ///
-    /// # Returns
-    ///
-    /// Le nombre d'utilisateurs déconnectés avec succès
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si :
-    /// - Impossible de récupérer le salon vocal
-    /// - Impossible de récupérer la liste des membres
-    /// - Erreurs lors des déconnexions individuelles (non bloquantes)
+    /// Vérifie le salon vocal configuré et gère avertissement puis déconnexion
     pub async fn check_and_disconnect_users(&self, ctx: &SerenityContext) -> Result<usize> {
         let guild_channel = self.get_voice_channel(ctx).await?;
         let members = self.get_voice_channel_members(ctx, &guild_channel).await?;
@@ -61,13 +49,77 @@ impl VoiceChannelManager {
             guild_channel.name
         ));
 
+        // Phase 1: Envoyer l'avertissement si configuré
+        if self.config.has_warnings_enabled() {
+            log_info("Envoi de l'avertissement...");
+
+            let warning_sent = self
+                .warning_manager
+                .send_warning(ctx, &members, &guild_channel.name)
+                .await;
+
+            if warning_sent {
+                log_info("Avertissement envoyé, début de l'attente...");
+
+                // Attendre le délai configuré
+                self.warning_manager.wait_warning_delay().await;
+
+                log_info("Fin de l'attente");
+
+                // Vérifier si on doit s'arrêter là (mode warning-only)
+                if self.config.is_warning_only_mode() {
+                    return Ok(0);
+                }
+
+                // Re-vérifier qui est encore présent après le délai
+                log_info("Vérification des membres restants...");
+                let remaining_members = self.get_voice_channel_members(ctx, &guild_channel).await?;
+
+                if remaining_members.is_empty() {
+                    log_info(
+                        "Tous les utilisateurs ont quitté d'eux-mêmes après l'avertissement !",
+                    );
+                    return Ok(0);
+                }
+
+                log_info(&format!(
+                "{} utilisateur(s) toujours présent(s) après l'avertissement - Début des déconnexions",
+                remaining_members.len()
+            ));
+
+                let result = self
+                    .disconnect_members(ctx, &remaining_members, &guild_channel.name)
+                    .await;
+
+                return result;
+            }
+        }
+
+        // Phase 2: Déconnexion directe (si pas d'avertissement ou échec d'envoi)
+        if !self.config.is_warning_only_mode() {
+            let result = self
+                .disconnect_members(ctx, &members, &guild_channel.name)
+                .await;
+            result
+        } else {
+            Ok(0)
+        }
+    }
+
+    /// Déconnecte une liste de membres et log les résultats
+    async fn disconnect_members(
+        &self,
+        ctx: &SerenityContext,
+        members: &[Member],
+        channel_name: &str,
+    ) -> Result<usize> {
         let mut disconnected_count = 0;
 
         for member in members {
-            match self.disconnect_user(ctx, &member).await {
+            match self.disconnect_user(ctx, member).await {
                 Ok(()) => {
                     disconnected_count += 1;
-                    self.log_disconnection_to_channel(ctx, &member.user.tag(), &guild_channel.name)
+                    self.log_disconnection_to_channel(ctx, &member.user.tag(), channel_name)
                         .await;
                 }
                 Err(e) => {
@@ -84,21 +136,6 @@ impl VoiceChannelManager {
     }
 
     /// Récupère et valide le salon vocal configuré
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - Contexte Serenity pour les interactions Discord
-    ///
-    /// # Returns
-    ///
-    /// Le salon vocal validé
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si :
-    /// - Le salon est introuvable
-    /// - Le salon n'est pas un salon de serveur Discord
-    /// - Le salon n'est pas de type vocal
     async fn get_voice_channel(&self, ctx: &SerenityContext) -> Result<GuildChannel> {
         let channel = self
             .config
@@ -119,19 +156,6 @@ impl VoiceChannelManager {
     }
 
     /// Récupère la liste des membres présents dans le salon vocal
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - Contexte Serenity pour les interactions Discord
-    /// * `channel` - Le salon vocal dont récupérer les membres
-    ///
-    /// # Returns
-    ///
-    /// Liste des membres connectés au salon vocal
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si impossible de récupérer les membres via l'API Discord
     async fn get_voice_channel_members(
         &self,
         ctx: &SerenityContext,
@@ -143,15 +167,6 @@ impl VoiceChannelManager {
     }
 
     /// Déconnecte un utilisateur spécifique du salon vocal
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - Contexte Serenity pour les interactions Discord
-    /// * `member` - Le membre à déconnecter
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si la déconnexion échoue via l'API Discord
     async fn disconnect_user(&self, ctx: &SerenityContext, member: &Member) -> Result<()> {
         let user_tag = member.user.tag();
 
@@ -165,17 +180,6 @@ impl VoiceChannelManager {
     }
 
     /// Log la déconnexion dans le canal de log configuré si disponible
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - Contexte Serenity pour les interactions Discord
-    /// * `user_tag` - Tag de l'utilisateur déconnecté (nom#discriminant)
-    /// * `channel_name` - Nom du salon vocal d'où l'utilisateur a été déconnecté
-    ///
-    /// # Note
-    ///
-    /// Cette méthode ne retourne pas d'erreur pour éviter d'interrompre le processus
-    /// de déconnexion en cas de problème avec les logs Discord.
     async fn log_disconnection_to_channel(
         &self,
         ctx: &SerenityContext,

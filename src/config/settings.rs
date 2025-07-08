@@ -1,6 +1,6 @@
 //! Gestion des paramètres de configuration et des fichiers JSON.
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -17,8 +17,31 @@ pub struct BotConfig {
     pub voice_channel_id: ChannelId,
     /// ID optionnel du salon de log pour les notifications
     pub log_channel_id: Option<ChannelId>,
+    /// ID optionnel du salon textuel pour les avertissements
+    pub warning_channel_id: Option<ChannelId>,
+    /// Délai d'attente après avertissement avant déconnexion
+    pub warning_delay_seconds: u64,
+    /// Mode avertissement uniquement (sans déconnexion)
+    pub warning_only: bool,
     /// Expression cron définissant la fréquence de vérification
     pub cron_schedule: String,
+}
+
+impl BotConfig {
+    /// Retourne le délai d'avertissement sous forme de Duration
+    pub fn warning_delay(&self) -> Duration {
+        Duration::from_secs(self.warning_delay_seconds)
+    }
+
+    /// Vérifie si les avertissements sont activés
+    pub fn has_warnings_enabled(&self) -> bool {
+        self.warning_channel_id.is_some()
+    }
+
+    /// Vérifie si le mode est "avertissement uniquement"
+    pub fn is_warning_only_mode(&self) -> bool {
+        self.warning_only
+    }
 }
 
 /// Gestionnaire de configuration responsable du chargement, sauvegarde et manipulation des configurations
@@ -62,12 +85,19 @@ impl ConfigManager {
         let mut config: BotConfig =
             serde_json::from_str(&config_content).context("Fichier de configuration invalide")?;
 
+        // Mise à jour avec les arguments CLI si fournis
         if let Some(channel_id) = args.voice_channel_id {
             config.voice_channel_id = ChannelId::new(channel_id);
         }
         if let Some(log_id) = args.log_channel_id {
             config.log_channel_id = Some(ChannelId::new(log_id));
         }
+        if let Some(warning_id) = args.warning_channel_id {
+            config.warning_channel_id = Some(ChannelId::new(warning_id));
+        }
+
+        config.warning_delay_seconds = args.warning_delay_seconds;
+        config.warning_only = args.warning_only;
         config.cron_schedule = args.cron_schedule.clone();
 
         self.save_configuration(&config, &args.config_file)?;
@@ -90,6 +120,9 @@ impl ConfigManager {
         let config = BotConfig {
             voice_channel_id: ChannelId::new(voice_channel_id),
             log_channel_id: args.log_channel_id.map(ChannelId::new),
+            warning_channel_id: args.warning_channel_id.map(ChannelId::new),
+            warning_delay_seconds: args.warning_delay_seconds,
+            warning_only: args.warning_only,
             cron_schedule: args.cron_schedule.clone(),
         };
 
@@ -205,6 +238,20 @@ impl ConfigManager {
             config
                 .log_channel_id
                 .map_or("Aucun".to_string(), |id| id.to_string())
+        );
+        println!(
+            "   • Salon d'avertissement: {}",
+            config
+                .warning_channel_id
+                .map_or("Aucun".to_string(), |id| id.to_string())
+        );
+        println!(
+            "   • Délai d'avertissement: {} secondes",
+            config.warning_delay_seconds
+        );
+        println!(
+            "   • Mode avertissement seul: {}",
+            if config.warning_only { "Oui" } else { "Non" }
         );
         println!("   • Planning: {}", config.cron_schedule);
     }

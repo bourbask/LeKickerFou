@@ -7,18 +7,24 @@ const CONFIG_FILE: &str = "bot_config.json";
 /// Arguments en ligne de commande pour la configuration du bot
 #[derive(Parser, Debug)]
 #[command(name = "lekickerfou")]
-#[command(version = "1.0.0")]
+#[command(version = "1.1.0")]
 #[command(
     about = "Bot Discord pour déconnecter automatiquement les utilisateurs des salons vocaux"
 )]
 #[command(
-    long_about = "Bot Discord qui surveille un salon vocal et déconnecte automatiquement tous les utilisateurs présents selon un planning configurable. Parfait pour forcer la fermeture d'un salon à certaines heures."
+    long_about = "Bot Discord qui surveille un salon vocal et déconnecte automatiquement tous les utilisateurs présents selon un planning configurable. Peut aussi envoyer des avertissements avant déconnexion."
 )]
 #[command(after_help = "EXEMPLES:\n  \
     # Configuration initiale\n  \
     lekickerfou --channel 123456789\n\n  \
     # Avec salon de log et planning personnalisé (toutes les 30 secondes)\n  \
     lekickerfou --channel 123456789 --log-channel 987654321 --schedule \"*/30 * * * * *\"\n\n  \
+    # Avec avertissement avant déconnexion\n  \
+    lekickerfou --channel 123456789 --warning-channel 555666777\n\n  \
+    # Avertissement uniquement (sans déconnexion)\n  \
+    lekickerfou --channel 123456789 --warning-channel 555666777 --warning-only\n\n  \
+    # Avertissement avec délai personnalisé (5 minutes)\n  \
+    lekickerfou --channel 123456789 --warning-channel 555666777 --warning-delay 300\n\n  \
     # Export de la configuration\n  \
     lekickerfou --export production-config.json\n\n  \
     # Import d'une configuration\n  \
@@ -48,6 +54,32 @@ pub struct Args {
     )]
     pub log_channel_id: Option<u64>,
 
+    /// ID du salon textuel pour envoyer les avertissements (optionnel)
+    #[arg(
+        short = 'w',
+        long = "warning-channel",
+        help = "ID du salon d'avertissement (optionnel)",
+        long_help = "ID numérique du salon Discord textuel où seront envoyés les messages d'avertissement avant déconnexion. Les utilisateurs seront mentionnés avec un message comique."
+    )]
+    pub warning_channel_id: Option<u64>,
+
+    /// Délai en secondes avant la déconnexion après l'avertissement
+    #[arg(
+        long = "warning-delay",
+        default_value = "60",
+        help = "Délai en secondes avant la déconnexion après avertissement",
+        long_help = "Nombre de secondes à attendre après avoir envoyé l'avertissement avant de procéder à la déconnexion. Par défaut 60 secondes."
+    )]
+    pub warning_delay_seconds: u64,
+
+    /// Mode avertissement uniquement (pas de déconnexion)
+    #[arg(
+        long = "warning-only",
+        help = "Envoyer uniquement l'avertissement sans déconnecter",
+        long_help = "Si activé, le bot n'enverra que l'avertissement sans déconnecter les utilisateurs. Utile pour un mode 'gentil' de rappel."
+    )]
+    pub warning_only: bool,
+
     /// Expression cron pour définir quand vérifier le salon vocal
     #[arg(
         short = 's',
@@ -74,7 +106,7 @@ pub struct Args {
         value_name = "FICHIER",
         help = "Exporter la configuration vers un fichier",
         long_help = "Exporte la configuration actuelle vers le fichier spécifié. Utile pour sauvegarder ou partager une configuration. Le bot s'arrête après l'export.",
-        conflicts_with_all = ["import_from", "voice_channel_id", "log_channel_id"]
+        conflicts_with_all = ["import_from", "voice_channel_id", "log_channel_id", "warning_channel_id"]
     )]
     pub export_to: Option<String>,
 
@@ -84,7 +116,7 @@ pub struct Args {
         value_name = "FICHIER",
         help = "Importer une configuration depuis un fichier",
         long_help = "Importe une configuration depuis le fichier spécifié et la définit comme configuration active. Remplace la configuration actuelle. Le bot s'arrête après l'import.",
-        conflicts_with_all = ["export_to", "voice_channel_id", "log_channel_id"]
+        conflicts_with_all = ["export_to", "voice_channel_id", "log_channel_id", "warning_channel_id"]
     )]
     pub import_from: Option<String>,
 }

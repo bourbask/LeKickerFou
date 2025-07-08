@@ -7,7 +7,10 @@ use serenity::{
     model::{guild::Member, Colour},
 };
 
-use crate::{config::BotConfig, utils::{log_error, log_info}};
+use crate::{
+    config::BotConfig,
+    utils::{log_error, log_info},
+};
 
 /// Collection de GIFs d'avertissement à rotation aléatoire
 const WARNING_GIFS: &[&str] = &[
@@ -24,23 +27,23 @@ const WARNING_GIFS: &[&str] = &[
 /// Messages d'avertissement à rotation aléatoire
 const WARNING_MESSAGES: &[&str] = &[
     "⏰ **Bon allez, c'est l'heure !** ⏰\n\nIl est temps de déconnecter les gars. Vous avez **{delay} secondes** pour partir avant que je vous vire moi-même du vocal !",
-    
+
     "🚨 **Dernière chance !** 🚨\n\nSérieusement, il faut aller dormir maintenant. Dans **{delay} secondes**, je kick tout le monde sans exception. Vous êtes prévenus !",
-    
+
     "😴 **Allez au lit bordel !** 😴\n\nÇa fait des heures que vous êtes là-dessus ! Plus que **{delay} secondes** pour quitter le vocal, sinon c'est moi qui vous déconnecte de force !",
-    
+
     "🔇 **Extinction des feux dans {delay} secondes** 🔇\n\nTout le monde dégage du vocal ! Plus personne ne doit traîner ici après ça !",
-    
+
     "⚡ **Coupage imminent !** ⚡\n\nVous connaissez la chanson : il est tard, vous devez dormir. **{delay} secondes** pour partir gentiment avant que ça devienne moins sympa !",
-    
+
     "🛑 **Stop, c'est fini !** 🛑\n\nLe vocal ferme dans **{delay} secondes**. Pas de négociation, pas d'exception. Tout le monde dehors !",
-    
+
     "💀 **Vous allez morfler** 💀\n\nDans **{delay} secondes**, je vous dégage de là. Après dites pas que vous étiez pas prévenus !",
-    
+
     "🎯 **Objectif : votre lit** 🎯\n\nVous avez **{delay} secondes** pour y aller par vous-mêmes. Sinon c'est moi qui vous aide à le retrouver !",
-    
+
     "🔥 **Ça va chauffer !** 🔥\n\nDans **{delay} secondes**, je déconnecte tout ce petit monde. Maintenant vous savez ce qui vous attend !",
-    
+
     "⚰️ **RIP vocal** ⚰️\n\nCe salon va mourir dans **{delay} secondes**. Évacuez tant qu'il est encore temps !"
 ];
 
@@ -56,15 +59,15 @@ impl WarningManager {
     }
 
     /// Envoie un avertissement aux utilisateurs présents dans le salon vocal
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `ctx` - Contexte Serenity pour les interactions Discord
     /// * `members` - Liste des membres présents dans le salon vocal
     /// * `voice_channel_name` - Nom du salon vocal concerné
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// `true` si l'avertissement a été envoyé avec succès, `false` sinon
     pub async fn send_warning(
         &self,
@@ -88,9 +91,9 @@ impl WarningManager {
             .description(&warning_message)
             .color(Colour::from_rgb(255, 165, 0)) // Orange
             .image(gif_url)
-            .footer(serenity::builder::CreateEmbedFooter::new(
-                format!("Salon concerné: {} | Bot LeKickerFou", voice_channel_name)
-            ))
+            .footer(serenity::builder::CreateEmbedFooter::new(format!(
+                "Salon concerné: {voice_channel_name} | Bot LeKickerFou"
+            )))
             .timestamp(serenity::model::Timestamp::now());
 
         let message = CreateMessage::new().embed(embed).content({
@@ -113,8 +116,7 @@ impl WarningManager {
             }
             Err(e) => {
                 log_error(&format!(
-                    "Impossible d'envoyer l'avertissement dans le salon: {}",
-                    e
+                    "Impossible d'envoyer l'avertissement dans le salon: {e}"
                 ));
                 false
             }
@@ -128,7 +130,7 @@ impl WarningManager {
             .iter()
             .choose(&mut rng)
             .unwrap_or(&WARNING_MESSAGES[0]);
-        
+
         let delay = self.config.warning_delay_seconds;
         let message = base_message.replace("{delay}", &delay.to_string());
 
@@ -149,7 +151,7 @@ impl WarningManager {
             "⚠️ *Cette menace est bien réelle ! Déconnexion automatique programmée !*"
         };
 
-        format!("{}\n\n{}\n\n{}", message, user_list, action_text)
+        format!("{message}\n\n{user_list}\n\n{action_text}")
     }
 
     /// Sélectionne un GIF aléatoire dans la collection
@@ -164,7 +166,10 @@ impl WarningManager {
     /// Attendre le délai configuré avant de procéder à l'action
     pub async fn wait_warning_delay(&self) {
         let delay = self.config.warning_delay();
-        log_info(&format!("⏳ Attente de {} secondes avant action...", delay.as_secs()));
+        log_info(&format!(
+            "⏳ Attente de {} secondes avant action...",
+            delay.as_secs()
+        ));
         tokio::time::sleep(delay).await;
     }
 }

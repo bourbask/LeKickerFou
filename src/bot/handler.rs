@@ -1,6 +1,6 @@
 //! Gestionnaire d'événements Discord principal.
 
-use anyhow::Context;
+use chrono::{Local, NaiveTime, TimeZone};
 use serenity::{
     async_trait,
     client::{Context as SerenityContext, EventHandler},
@@ -21,72 +21,118 @@ pub struct BotHandler {
 
 impl BotHandler {
     /// Crée une nouvelle instance du gestionnaire d'événements
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Configuration du bot à utiliser
     pub fn new(config: BotConfig) -> Self {
         Self { config }
     }
 
-    /// Démarre la surveillance des salons vocaux avec une tâche cron
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - Contexte Serenity pour les interactions Discord
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si :
-    /// - Impossible de créer le planificateur de tâches
-    /// - Expression cron invalide
-    /// - Impossible d'ajouter ou démarrer la tâche
-    async fn start_voice_monitoring(&self, ctx: SerenityContext) -> anyhow::Result<()> {
-        use tokio_cron_scheduler::{Job, JobScheduler};
+    /// Calcule la prochaine occurrence de l'heure de couvre-feu
+    fn calculate_next_curfew_time(&self, curfew_time: NaiveTime) -> chrono::DateTime<Local> {
+        let now = Local::now();
+        let today_curfew = now.date_naive().and_time(curfew_time);
 
-        let scheduler = JobScheduler::new()
-            .await
-            .context("Impossible de créer le planificateur de tâches")?;
+        let next_curfew = if now.time() >= curfew_time {
+            // Si on a dépassé l'heure aujourd'hui, programmer pour demain
+            let tomorrow = now.date_naive() + chrono::Days::new(1);
+            tomorrow.and_time(curfew_time)
+        } else {
+            // Sinon programmer pour aujourd'hui
+            today_curfew
+        };
 
-        let config = self.config.clone();
-        let cron_expr = config.cron_schedule.clone();
+        Local.from_local_datetime(&next_curfew)
+            .single()
+            .expect("Heure invalide pour combinaison")
+    }
 
-        let job = Job::new_async(&cron_expr, move |_uuid, _scheduler| {
-            let ctx_clone = ctx.clone();
-            let config_clone = config.clone();
+    /// Calcule l'heure d'avertissement initial (couvre-feu - délai)
+    fn calculate_initial_warning_time(&self, curfew_time: chrono::DateTime<Local>) -> Option<chrono::DateTime<Local>> {
+        if !self.config.has_warnings_enabled() {
+            return None;
+        }
 
-            Box::pin(async move {
-                match VoiceChannelManager::new(config_clone)
-                    .check_and_disconnect_users(&ctx_clone)
-                    .await
-                {
-                    Ok(disconnected_count) => {
-                        if disconnected_count > 0 {
-                            log_info(&format!(
-                                "{disconnected_count} utilisateur(s) déconnecté(s)"
-                            ));
-                        }
+        let warning_delay = chrono::Duration::seconds(self.config.warning_delay_seconds as i64);
+        Some(curfew_time - warning_delay)
+    }
+
+    /// Démarre la surveillance avec planification des tâches
+    async fn start_curfew_monitoring(&self, ctx: SerenityContext) -> anyhow::Result<()> {
+        let next_curfew = self.calculate_next_curfew_time(self.config.curfew_time);
+        
+        log_info(&format!(
+            "Prochaine heure de couvre-feu programmée: {}",
+            next_curfew.format("%Y-%m-%d %H:%M:%S")
+        ));
+
+        // Planifier l'avertissement initial si configuré
+        if let Some(initial_warning_time) = self.calculate_initial_warning_time(next_curfew) {
+            let config_warning = self.config.clone();
+            let ctx_warning = ctx.clone();
+
+            log_info(&format!(
+                "Avertissement initial programmé pour: {}",
+                initial_warning_time.format("%Y-%m-%d %H:%M:%S")
+            ));
+
+            // Calculer le délai jusqu'au warning initial
+            let now = Local::now();
+            let warning_delay = if initial_warning_time > now {
+                (initial_warning_time - now).to_std().unwrap_or_default()
+            } else {
+                std::time::Duration::from_secs(0)
+            };
+
+            if warning_delay > std::time::Duration::from_secs(0) {
+                tokio::spawn(async move {
+                    tokio::time::sleep(warning_delay).await;
+                    let manager = VoiceChannelManager::new(config_warning);
+                    if let Err(e) = manager.send_initial_warning_if_needed(&ctx_warning).await {
+                        log_error(&format!("Erreur lors de l'envoi d'avertissement initial: {e}"));
                     }
-                    Err(e) => log_error(&format!("Erreur lors de la vérification: {e}")),
+                });
+            }
+        }
+
+        // Planifier le couvre-feu principal
+        let config_curfew = self.config.clone();
+        let ctx_curfew = ctx;
+        let now = Local::now();
+        let curfew_delay = if next_curfew > now {
+            (next_curfew - now).to_std().unwrap_or_default()
+        } else {
+            std::time::Duration::from_secs(0)
+        };
+
+        tokio::spawn(async move {
+            if curfew_delay > std::time::Duration::from_secs(0) {
+                tokio::time::sleep(curfew_delay).await;
+            }
+            
+            let manager = VoiceChannelManager::new(config_curfew.clone());
+
+            match manager.handle_curfew_time(&ctx_curfew).await {
+                Ok(disconnected_count) => {
+                    if disconnected_count > 0 {
+                        log_info(&format!("{disconnected_count} utilisateur(s) déconnecté(s) pour couvre-feu"));
+                    } else if config_curfew.is_warning_only_mode() {
+                        log_info("Couvre-feu en mode clément - Aucune déconnexion effectuée");
+                    } else {
+                        log_info("Aucun utilisateur à déconnecter - Salon vocal vide");
+                    }
                 }
-            })
-        })
-        .context("Expression cron invalide")?;
-
-        scheduler
-            .add(job)
-            .await
-            .context("Impossible d'ajouter la tâche au planificateur")?;
-
-        scheduler
-            .start()
-            .await
-            .context("Impossible de démarrer le planificateur")?;
+                Err(e) => log_error(&format!("Erreur lors du couvre-feu: {e}")),
+            }
+        });
 
         log_info(&format!(
-            "Surveillance des salons vocaux démarrée (planning: {})",
-            self.config.cron_schedule
+            "Surveillance démarrée - Couvre-feu à {} ({})",
+            self.config.curfew_time.format("%H:%M"),
+            if self.config.has_warnings_enabled() {
+                format!("avec avertissement {} secondes avant", self.config.warning_delay_seconds)
+            } else {
+                "sans avertissement".to_string()
+            }
         ));
+
         Ok(())
     }
 }
@@ -94,13 +140,6 @@ impl BotHandler {
 #[async_trait]
 impl EventHandler for BotHandler {
     /// Gestionnaire d'événement déclenché quand le bot est prêt
-    ///
-    /// Initialise le système de tâches planifiées et affiche les informations de connexion.
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - Contexte Serenity pour les interactions Discord
-    /// * `ready` - Informations sur l'état de connexion du bot
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         log_info(&format!(
             "Bot connecté sous {} (ID: {})",
@@ -115,7 +154,7 @@ impl EventHandler for BotHandler {
                 .map_or("Aucun".to_string(), |id| id.to_string())
         ));
 
-        if let Err(err) = self.start_voice_monitoring(ctx).await {
+        if let Err(err) = self.start_curfew_monitoring(ctx).await {
             log_error(&format!(
                 "Erreur lors du démarrage de la surveillance: {err}"
             ));

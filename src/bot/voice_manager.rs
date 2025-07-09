@@ -34,7 +34,81 @@ impl VoiceChannelManager {
         }
     }
 
-    /// Vérifie le salon vocal configuré et gère avertissement puis déconnexion
+    /// Envoie l'avertissement initial si des utilisateurs sont présents
+    pub async fn send_initial_warning_if_needed(&self, ctx: &SerenityContext) -> Result<()> {
+        let guild_channel = self.get_voice_channel(ctx).await?;
+        let members = self.get_voice_channel_members(ctx, &guild_channel).await?;
+
+        if !members.is_empty() {
+            log_info(&format!(
+                "{} membre(s) détecté(s) pour avertissement initial dans '{}'",
+                members.len(),
+                guild_channel.name
+            ));
+
+            self.warning_manager
+                .send_initial_warning(ctx, &members, &guild_channel.name)
+                .await;
+        } else {
+            log_info("Aucun utilisateur présent pour l'avertissement initial");
+        }
+
+        Ok(())
+    }
+
+    /// Gère l'heure du couvre-feu (warning final + kick ou grâce)
+    pub async fn handle_curfew_time(&self, ctx: &SerenityContext) -> Result<usize> {
+        let guild_channel = self.get_voice_channel(ctx).await?;
+        let members = self.get_voice_channel_members(ctx, &guild_channel).await?;
+
+        if members.is_empty() {
+            log_info("Aucun utilisateur présent à l'heure du couvre-feu");
+            return Ok(0);
+        }
+
+        log_info(&format!(
+            "{} membre(s) toujours présent(s) à l'heure du couvre-feu dans '{}'",
+            members.len(),
+            guild_channel.name
+        ));
+
+        if self.config.is_warning_only_mode() {
+            // Mode clément : envoyer un message de grâce
+            self.warning_manager
+                .send_merciful_message(ctx, &members, &guild_channel.name)
+                .await;
+            
+            log_info("Mode clément activé - Message de grâce envoyé");
+            return Ok(0);
+        }
+
+        // Mode kick : avertissement final puis déconnexion
+        log_info("Envoi de l'avertissement final...");
+        self.warning_manager
+            .send_final_warning(ctx, &members, &guild_channel.name)
+            .await;
+
+        // Attendre 10 secondes avant le kick
+        log_info("⏳ Attente de 10 secondes avant déconnexion...");
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
+        // Vérifier qui est encore là et déconnecter
+        let final_members = self.get_voice_channel_members(ctx, &guild_channel).await?;
+        if final_members.is_empty() {
+            log_info("Tous les utilisateurs ont quitté après l'avertissement final !");
+            return Ok(0);
+        }
+
+        log_info(&format!(
+            "{} utilisateur(s) toujours présent(s) - Début des déconnexions",
+            final_members.len()
+        ));
+
+        self.disconnect_members(ctx, &final_members, &guild_channel.name)
+            .await
+    }
+
+    /// Vérifie le salon vocal et déconnecte tous les utilisateurs présents (usage direct)
     pub async fn check_and_disconnect_users(&self, ctx: &SerenityContext) -> Result<usize> {
         let guild_channel = self.get_voice_channel(ctx).await?;
         let members = self.get_voice_channel_members(ctx, &guild_channel).await?;
@@ -44,66 +118,13 @@ impl VoiceChannelManager {
         }
 
         log_info(&format!(
-            "{} membre(s) détecté(s) dans le salon '{}'",
+            "{} membre(s) détecté(s) dans le salon '{}' - Début des déconnexions directes",
             members.len(),
             guild_channel.name
         ));
 
-        // Phase 1: Envoyer l'avertissement si configuré
-        if self.config.has_warnings_enabled() {
-            log_info("Envoi de l'avertissement...");
-
-            let warning_sent = self
-                .warning_manager
-                .send_warning(ctx, &members, &guild_channel.name)
-                .await;
-
-            if warning_sent {
-                log_info("Avertissement envoyé, début de l'attente...");
-
-                // Attendre le délai configuré
-                self.warning_manager.wait_warning_delay().await;
-
-                log_info("Fin de l'attente");
-
-                // Vérifier si on doit s'arrêter là (mode warning-only)
-                if self.config.is_warning_only_mode() {
-                    return Ok(0);
-                }
-
-                // Re-vérifier qui est encore présent après le délai
-                log_info("Vérification des membres restants...");
-                let remaining_members = self.get_voice_channel_members(ctx, &guild_channel).await?;
-
-                if remaining_members.is_empty() {
-                    log_info(
-                        "Tous les utilisateurs ont quitté d'eux-mêmes après l'avertissement !",
-                    );
-                    return Ok(0);
-                }
-
-                log_info(&format!(
-                "{} utilisateur(s) toujours présent(s) après l'avertissement - Début des déconnexions",
-                remaining_members.len()
-            ));
-
-                let result = self
-                    .disconnect_members(ctx, &remaining_members, &guild_channel.name)
-                    .await;
-
-                return result;
-            }
-        }
-
-        // Phase 2: Déconnexion directe (si pas d'avertissement ou échec d'envoi)
-        if !self.config.is_warning_only_mode() {
-            let result = self
-                .disconnect_members(ctx, &members, &guild_channel.name)
-                .await;
-            result
-        } else {
-            Ok(0)
-        }
+        self.disconnect_members(ctx, &members, &guild_channel.name)
+            .await
     }
 
     /// Déconnecte une liste de membres et log les résultats
@@ -187,7 +208,7 @@ impl VoiceChannelManager {
         channel_name: &str,
     ) {
         if let Some(log_channel_id) = self.config.log_channel_id {
-            let log_message = format!("🔇 {user_tag} déconnecté du salon '{channel_name}'");
+            let log_message = format!("🔇 {user_tag} déconnecté du salon '{channel_name}' (couvre-feu)");
 
             if let Err(e) = log_channel_id.say(ctx, log_message).await {
                 log_error(&format!("Impossible d'envoyer le log Discord: {e}"));

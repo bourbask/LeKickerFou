@@ -3,6 +3,7 @@
 use std::{fs, path::Path, time::Duration};
 
 use anyhow::{Context, Result};
+use chrono::NaiveTime;
 use serde::{Deserialize, Serialize};
 use serenity::model::id::ChannelId;
 
@@ -19,12 +20,34 @@ pub struct BotConfig {
     pub log_channel_id: Option<ChannelId>,
     /// ID optionnel du salon textuel pour les avertissements
     pub warning_channel_id: Option<ChannelId>,
+    /// Heure de couvre-feu
+    #[serde(with = "time_format")]
+    pub curfew_time: NaiveTime,
     /// Délai d'attente après avertissement avant déconnexion
     pub warning_delay_seconds: u64,
     /// Mode avertissement uniquement (sans déconnexion)
     pub warning_only: bool,
-    /// Expression cron définissant la fréquence de vérification
-    pub cron_schedule: String,
+}
+
+mod time_format {
+    use chrono::NaiveTime;
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(time: &NaiveTime, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = time.format("%H:%M").to_string();
+        serializer.serialize_str(&s)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<NaiveTime, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        NaiveTime::parse_from_str(&s, "%H:%M").map_err(serde::de::Error::custom)
+    }
 }
 
 impl BotConfig {
@@ -54,21 +77,6 @@ impl ConfigManager {
     }
 
     /// Charge la configuration depuis les arguments CLI ou le fichier de config existant
-    ///
-    /// # Arguments
-    ///
-    /// * `args` - Arguments de ligne de commande parsés
-    ///
-    /// # Returns
-    ///
-    /// La configuration chargée ou nouvellement créée
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si :
-    /// - Le fichier de configuration existe mais est invalide
-    /// - Aucun ID de salon vocal n'est fourni pour une nouvelle configuration
-    /// - Impossible d'écrire le fichier de configuration
     pub fn load_or_create_configuration(&self, args: &Args) -> Result<BotConfig> {
         if Path::new(&args.config_file).exists() {
             self.load_existing_configuration(args)
@@ -95,10 +103,13 @@ impl ConfigManager {
         if let Some(warning_id) = args.warning_channel_id {
             config.warning_channel_id = Some(ChannelId::new(warning_id));
         }
+        if let Some(time_str) = &args.curfew_time {
+            config.curfew_time = NaiveTime::parse_from_str(time_str, "%H:%M")
+                .context("Format d'heure invalide (utilisez HH:MM)")?;
+        }
 
         config.warning_delay_seconds = args.warning_delay_seconds;
         config.warning_only = args.warning_only;
-        config.cron_schedule = args.cron_schedule.clone();
 
         self.save_configuration(&config, &args.config_file)?;
         log_info(&format!(
@@ -117,13 +128,22 @@ impl ConfigManager {
             )
         })?;
 
+        let curfew_time_str = args.curfew_time.as_ref().ok_or_else(|| {
+            BotError::MissingConfig(
+                "Heure de couvre-feu requise (--curfew-time HH:MM)".to_string(),
+            )
+        })?;
+
+        let curfew_time = NaiveTime::parse_from_str(curfew_time_str, "%H:%M")
+            .context("Format d'heure invalide (utilisez HH:MM)")?;
+
         let config = BotConfig {
             voice_channel_id: ChannelId::new(voice_channel_id),
             log_channel_id: args.log_channel_id.map(ChannelId::new),
             warning_channel_id: args.warning_channel_id.map(ChannelId::new),
+            curfew_time,
             warning_delay_seconds: args.warning_delay_seconds,
             warning_only: args.warning_only,
-            cron_schedule: args.cron_schedule.clone(),
         };
 
         self.save_configuration(&config, &args.config_file)?;
@@ -136,15 +156,6 @@ impl ConfigManager {
     }
 
     /// Sauvegarde une configuration dans un fichier JSON
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - La configuration à sauvegarder
-    /// * `file_path` - Le chemin du fichier de destination
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si impossible de sérialiser ou écrire le fichier
     fn save_configuration(&self, config: &BotConfig, file_path: &str) -> Result<()> {
         let config_json = serde_json::to_string_pretty(config)
             .context("Impossible de sérialiser la configuration")?;
@@ -156,18 +167,6 @@ impl ConfigManager {
     }
 
     /// Importe une configuration depuis un fichier vers la configuration active
-    ///
-    /// # Arguments
-    ///
-    /// * `source_file` - Fichier source contenant la configuration à importer
-    /// * `target_file` - Fichier de destination (configuration active)
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si :
-    /// - Le fichier source n'existe pas
-    /// - La configuration source est invalide
-    /// - Impossible de copier le fichier
     pub async fn import_configuration(&self, source_file: &str, target_file: &str) -> Result<()> {
         if !Path::new(source_file).exists() {
             return Err(BotError::InvalidConfig(format!(
@@ -195,18 +194,6 @@ impl ConfigManager {
     }
 
     /// Exporte la configuration actuelle vers un fichier spécifique
-    ///
-    /// # Arguments
-    ///
-    /// * `source_file` - Fichier de configuration actuel
-    /// * `target_file` - Fichier de destination pour l'export
-    ///
-    /// # Errors
-    ///
-    /// Retourne une erreur si :
-    /// - Le fichier source n'existe pas
-    /// - Impossible de copier le fichier
-    /// - Impossible de lire ou parser la configuration
     pub async fn export_configuration(&self, source_file: &str, target_file: &str) -> Result<()> {
         if !Path::new(source_file).exists() {
             return Err(BotError::InvalidConfig(format!(
@@ -245,6 +232,7 @@ impl ConfigManager {
                 .warning_channel_id
                 .map_or("Aucun".to_string(), |id| id.to_string())
         );
+        println!("   • Heure de couvre-feu: {}", config.curfew_time.format("%H:%M"));
         println!(
             "   • Délai d'avertissement: {} secondes",
             config.warning_delay_seconds
@@ -253,7 +241,6 @@ impl ConfigManager {
             "   • Mode avertissement seul: {}",
             if config.warning_only { "Oui" } else { "Non" }
         );
-        println!("   • Planning: {}", config.cron_schedule);
     }
 
     /// Affiche les instructions d'utilisation après un import

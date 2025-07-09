@@ -1,0 +1,8 @@
+{
+  "voice_channel_id": "123456789012345678",
+  "log_channel_id": null,
+  "warning_channel_id": null,
+  "warning_delay_seconds": 60,
+  "warning_only": false,
+  "cron_schedule": "0 * * * * *"
+}

@@ -1,59 +1,164 @@
+//! Bot Discord pour déconnecter automatiquement les utilisateurs des salons vocaux
+
 use anyhow::{Context, Result};
 use clap::Parser;
-use dotenv::dotenv;
-use serenity::all::GatewayIntents;
-use serenity::Client;
-
-use lekickerfou::{
-    bot::BotHandler,
-    config::{Args, ConfigManager},
-    utils::{get_discord_token, log_info},
+use config::{Args, ConfigManager};
+use serenity::{
+    all::{CreateCommand, GatewayIntents, Interaction},
+    client::{Client, Context as SerenityContext, EventHandler},
+    model::gateway::Ready,
 };
+use std::env;
+use tokio_cron_scheduler::{Job, JobScheduler};
 
+mod config;
+mod error;
+mod handler;
+mod history;
+mod logging;
+mod permissions;
+mod scheduler;
+mod utils;
+
+use error::BotError;
+use permissions::PermissionValidator;
+use scheduler::execute_scheduled_kick;
+
+/// Point d'entrée principal
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv().ok();
-
     let args = Args::parse();
+
+    // Configuration
     let config_manager = ConfigManager::new();
-
-    // Gestion de l'import de configuration
-    if let Some(import_file) = &args.import_from {
-        return config_manager
-            .import_configuration(import_file, &args.config_file)
-            .await;
-    }
-
-    // Gestion de l'export de configuration
-    if let Some(export_file) = &args.export_to {
-        return config_manager
-            .export_configuration(&args.config_file, export_file)
-            .await;
-    }
-
-    // Chargement de la configuration
     let config = config_manager
         .load_or_create_configuration(&args)
         .context("Impossible de charger la configuration")?;
 
-    // Récupération du token Discord
-    let token = get_discord_token().context("Token Discord requis")?;
+    println!("✅ Configuration chargée");
+    println!("🔊 Salon surveillé: {}", config.voice_channel_id);
+    println!("⏰ Planning: {}", config.cron_schedule);
 
-    // Configuration des intents Discord
-    let intents = GatewayIntents::GUILDS | GatewayIntents::GUILD_VOICE_STATES;
+    // Token Discord
+    let token = env::var("DISCORD_TOKEN").context("Variable DISCORD_TOKEN manquante")?;
 
-    // Création du client Discord
-    let mut client = Client::builder(&token, intents)
-        .event_handler(BotHandler::new(config))
+    // Client Discord
+    let intents = GatewayIntents::GUILD_VOICE_STATES | GatewayIntents::GUILD_MESSAGES;
+
+    let mut client = Client::builder(token, intents)
+        .event_handler(DiscordEventHandler::new(config.clone()))
         .await
-        .context("Erreur lors de la création du client Discord")?;
+        .context("Impossible de créer le client Discord")?;
 
-    log_info("🚀 Démarrage du bot...");
+    println!("🚀 Démarrage du bot...");
 
-    client
-        .start()
-        .await
-        .context("Erreur lors du démarrage du bot")?;
+    if let Err(e) = client.start().await {
+        return Err(BotError::DiscordError(format!("Erreur du client: {}", e)).into());
+    }
 
     Ok(())
+}
+
+/// Handler pour les événements Discord
+struct DiscordEventHandler {
+    config: config::BotConfig,
+    scheduler_started: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl DiscordEventHandler {
+    fn new(config: config::BotConfig) -> Self {
+        Self {
+            config,
+            scheduler_started: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+}
+
+#[serenity::async_trait]
+impl EventHandler for DiscordEventHandler {
+    async fn ready(&self, ctx: SerenityContext, ready: Ready) {
+        println!("✅ Bot connecté: {}", ready.user.tag());
+
+        // Enregistrer les commandes slash
+        let commands = vec![
+            CreateCommand::new("status").description("Affiche le statut du bot"),
+            CreateCommand::new("kick").description("Déconnecte manuellement tous les utilisateurs"),
+            CreateCommand::new("permissions")
+                .description("Affiche les permissions (Admin uniquement)"),
+        ];
+
+        if let Err(e) = ctx.http.create_global_commands(&commands).await {
+            eprintln!("❌ Erreur lors de l'enregistrement des commandes: {}", e);
+        } else {
+            println!("✅ Commandes slash enregistrées");
+        }
+
+        // Démarrer le scheduler (une seule fois)
+        if !self
+            .scheduler_started
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            self.scheduler_started
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+
+            let config_clone = self.config.clone();
+            let ctx_clone = ctx.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = start_scheduler(ctx_clone, config_clone).await {
+                    eprintln!("❌ Erreur du scheduler: {}", e);
+                }
+            });
+        }
+    }
+
+    async fn interaction_create(&self, ctx: SerenityContext, interaction: Interaction) {
+        let permission_validator = PermissionValidator::new();
+
+        if let Err(e) = handler::handle_interaction(&ctx, &interaction, &permission_validator).await
+        {
+            eprintln!("Erreur interaction: {}", e);
+        }
+    }
+}
+
+/// Démarre le scheduler cron pour les déconnexions automatiques
+async fn start_scheduler(ctx: SerenityContext, config: config::BotConfig) -> Result<()> {
+    println!(
+        "⏰ Démarrage du scheduler avec planning: {}",
+        config.cron_schedule
+    );
+
+    let scheduler = JobScheduler::new().await?;
+
+    // Cloner les valeurs avant de les utiliser dans la closure
+    let cron_schedule = config.cron_schedule.clone();
+
+    let job = Job::new_async(cron_schedule.as_str(), move |_uuid, _l| {
+        let ctx = ctx.clone();
+        let config = config.clone();
+
+        Box::pin(async move {
+            match execute_scheduled_kick(&ctx, &config).await {
+                Ok(count) => {
+                    if count > 0 {
+                        println!("✅ Scheduler: {} utilisateurs déconnectés", count);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ Erreur scheduler: {}", e);
+                }
+            }
+        })
+    })?;
+
+    scheduler.add(job).await?;
+    scheduler.start().await?;
+
+    println!("✅ Scheduler démarré avec succès");
+
+    // Maintenir le scheduler en vie
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    }
 }

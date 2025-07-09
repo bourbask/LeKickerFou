@@ -23,18 +23,30 @@ const CONFIG_FILE: &str = "bot_config.json";
     lekickerfou --channel 123456789 --warning-channel 555666777\n\n  \
     # Avertissement uniquement (sans déconnexion)\n  \
     lekickerfou --channel 123456789 --warning-channel 555666777 --warning-only\n\n  \
+    # Avec logs verbeux\n  \
+    lekickerfou --channel 123456789 -vv\n\n  \
     # Avertissement avec délai personnalisé (5 minutes)\n  \
     lekickerfou --channel 123456789 --warning-channel 555666777 --warning-delay 300\n\n  \
     # Export de la configuration\n  \
     lekickerfou --export production-config.json\n\n  \
     # Import d'une configuration\n  \
     lekickerfou --import production-config.json\n\n  \
+    # Gestion de l'historique\n  \
+    lekickerfou --list-backups\n  \
+    lekickerfou --restore \"2024-01-15_14-30-25.json\"\n\n  \
     # Utilisation d'un fichier de config personnalisé\n  \
     lekickerfou --config-file my-config.json --channel 123456789\n\n\
+NIVEAUX DE VERBOSITÉ:\n  \
+    (aucun)    Kicks effectifs uniquement\n  \
+    -v         + Changements critiques\n  \
+    -vv        + Tous les changements\n  \
+    -vvv       + Toutes les interactions\n\n\
 VARIABLES D'ENVIRONNEMENT:\n  \
     DISCORD_TOKEN    Token du bot Discord (obligatoire)\n\n\
 FICHIERS:\n  \
-    bot_config.json  Fichier de configuration par défaut")]
+    bot_config.json  Fichier de configuration par défaut\n  \
+    configs/backups/ Sauvegardes automatiques des configurations\n  \
+    whitelist.json   Liste des utilisateurs/rôles autorisés")]
 pub struct Args {
     /// ID du salon vocal à surveiller (obligatoire pour une nouvelle configuration)
     #[arg(
@@ -90,6 +102,20 @@ pub struct Args {
     )]
     pub cron_schedule: String,
 
+    /// Niveau de verbosité des logs (-v, -vv, -vvv)
+    #[arg(
+        short = 'v',
+        long = "verbose",
+        action = clap::ArgAction::Count,
+        help = "Niveau de verbosité des logs",
+        long_help = "Contrôle le niveau de détail des logs Discord. Peut être répété pour augmenter la verbosité:\n\
+        • Aucun flag: Kicks effectifs uniquement\n\
+        • -v: + Changements critiques (configuration, scheduler)\n\
+        • -vv: + Tous les changements de configuration\n\
+        • -vvv: + Toutes les interactions utilisateur"
+    )]
+    pub verbose: u8,
+
     /// Chemin vers le fichier de configuration JSON
     #[arg(
         short = 'f',
@@ -106,7 +132,7 @@ pub struct Args {
         value_name = "FICHIER",
         help = "Exporter la configuration vers un fichier",
         long_help = "Exporte la configuration actuelle vers le fichier spécifié. Utile pour sauvegarder ou partager une configuration. Le bot s'arrête après l'export.",
-        conflicts_with_all = ["import_from", "voice_channel_id", "log_channel_id", "warning_channel_id"]
+        conflicts_with_all = ["import_from", "voice_channel_id", "log_channel_id", "warning_channel_id", "list_backups", "restore_backup"]
     )]
     pub export_to: Option<String>,
 
@@ -116,7 +142,26 @@ pub struct Args {
         value_name = "FICHIER",
         help = "Importer une configuration depuis un fichier",
         long_help = "Importe une configuration depuis le fichier spécifié et la définit comme configuration active. Remplace la configuration actuelle. Le bot s'arrête après l'import.",
-        conflicts_with_all = ["export_to", "voice_channel_id", "log_channel_id", "warning_channel_id"]
+        conflicts_with_all = ["export_to", "voice_channel_id", "log_channel_id", "warning_channel_id", "list_backups", "restore_backup"]
     )]
     pub import_from: Option<String>,
+
+    /// Lister les sauvegardes disponibles
+    #[arg(
+        long = "list-backups",
+        help = "Affiche la liste des sauvegardes de configuration disponibles",
+        long_help = "Liste toutes les sauvegardes de configuration disponibles dans le dossier configs/backups/ avec leurs dates de création et un aperçu du contenu.",
+        conflicts_with_all = ["export_to", "import_from", "voice_channel_id", "log_channel_id", "warning_channel_id", "restore_backup"]
+    )]
+    pub list_backups: bool,
+
+    /// Restaurer une sauvegarde spécifique
+    #[arg(
+        long = "restore",
+        value_name = "BACKUP_FILE",
+        help = "Restaure une sauvegarde de configuration",
+        long_help = "Restaure la configuration depuis la sauvegarde spécifiée. Le nom du fichier doit correspondre à une sauvegarde existante (format: YYYY-MM-DD_HH-MM-SS.json). Cette action ne crée pas de nouvelle sauvegarde.",
+        conflicts_with_all = ["export_to", "import_from", "voice_channel_id", "log_channel_id", "warning_channel_id", "list_backups"]
+    )]
+    pub restore_backup: Option<String>,
 }

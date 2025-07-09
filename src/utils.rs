@@ -1,123 +1,42 @@
-//! Utilitaires partagés pour le logging et la gestion des tokens.
+//! Fonctions utilitaires communes.
 
-use std::env;
+use std::time::SystemTime;
 
-use anyhow::Context;
-use chrono::Utc;
-use colored::*;
-
-use crate::BotError;
-
-/// Récupère le token Discord depuis les variables d'environnement
-///
-/// # Errors
-///
-/// Retourne une erreur si la variable d'environnement `DISCORD_TOKEN` n'est pas définie.
-///
-/// # Examples
-///
-/// ```
-/// std::env::set_var("DISCORD_TOKEN", "your_token_here");
-/// match lekickerfou::utils::get_discord_token() {
-///     Ok(token) => println!("Token récupéré: {}", &token[..10]), // Affiche les 10 premiers caractères
-///     Err(_) => println!("Pas de token"),
-/// }
-/// std::env::remove_var("DISCORD_TOKEN"); // Nettoyer après le test
-/// ```
-pub fn get_discord_token() -> anyhow::Result<String> {
-    env::var("DISCORD_TOKEN")
-        .map_err(|_| {
-            println!("❓ Token Discord non trouvé dans DISCORD_TOKEN.");
-            println!("💡 Vous pouvez :");
-            println!("   1. Créer un fichier .env avec DISCORD_TOKEN=votre_token");
-            println!("   2. Exporter la variable: export DISCORD_TOKEN=votre_token");
-            println!("   3. Lancer avec: DISCORD_TOKEN=votre_token ./lekickerfou");
-
-            BotError::MissingConfig("Token Discord requis".to_string())
-        })
-        .context("Token Discord manquant")
+/// Affiche un message d'information dans la console avec timestamp
+pub fn log_info(message: &str) {
+    println!("[{}] ℹ️ {}", format_timestamp(), message);
 }
 
-/// Affiche un message d'information formaté avec horodatage
-///
-/// # Arguments
-///
-/// * `msg` - Le message à afficher
-///
-/// # Examples
-///
-/// ```
-/// // Les fonction de logging sont conçues pour l'output console
-/// // et ne retournent rien de testable directement
-/// lekickerfou::utils::log_info("Bot démarré avec succès");
-/// // Cela affichera: ℹ️ [2024-01-01 12:00:00 UTC] Bot démarré avec succès
-/// ```
-pub fn log_info(msg: &str) {
-    println!(
-        "{} {} {}",
-        "ℹ️".green(),
-        Utc::now()
-            .format("[%Y-%m-%d %H:%M:%S UTC]")
-            .to_string()
-            .dimmed(),
-        msg
-    );
+/// Affiche un message d'erreur dans la console avec timestamp
+pub fn log_error(message: &str) {
+    eprintln!("[{}] ❌ {}", format_timestamp(), message);
 }
 
-/// Affiche un message d'erreur formaté avec horodatage
-///
-/// # Arguments
-///
-/// * `msg` - Le message d'erreur à afficher
-///
-/// # Examples
-///
-/// ```
-/// // Les fonction de logging sont conçues pour l'output console  
-/// // et ne retournent rien de testable directement
-/// lekickerfou::utils::log_error("Impossible de se connecter au serveur");
-/// // Cela affichera: ❌ [2024-01-01 12:00:00 UTC] Impossible de se connecter au serveur (en rouge)
-/// ```
-pub fn log_error(msg: &str) {
-    eprintln!(
-        "{} {} {}",
-        "❌".red(),
-        Utc::now()
-            .format("[%Y-%m-%d %H:%M:%S UTC]")
-            .to_string()
-            .dimmed(),
-        msg.red()
-    );
+/// Affiche un message d'avertissement dans la console avec timestamp
+pub fn log_warning(message: &str) {
+    println!("[{}] ⚠️ {}", format_timestamp(), message);
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::env;
+/// Formate un timestamp simple
+fn format_timestamp() -> String {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
 
-    #[test]
-    fn test_get_discord_token_when_set() {
-        env::set_var("DISCORD_TOKEN", "test_token_123");
-        let result = get_discord_token();
-        env::remove_var("DISCORD_TOKEN");
+    let datetime =
+        chrono::DateTime::from_timestamp(now as i64, 0).unwrap_or_else(|| chrono::Utc::now());
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "test_token_123");
+    datetime.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+/// Valide une expression cron basique
+pub fn validate_cron_expression(expression: &str) -> Result<(), String> {
+    let parts: Vec<&str> = expression.split_whitespace().collect();
+
+    if parts.len() != 6 {
+        return Err("L'expression cron doit contenir exactement 6 parties".to_string());
     }
 
-    #[test]
-    fn test_get_discord_token_when_missing() {
-        env::remove_var("DISCORD_TOKEN");
-        let result = get_discord_token();
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_log_functions_dont_panic() {
-        // Test que les fonctions de log ne paniquent pas
-        log_info("Test message");
-        log_error("Test error message");
-        // Ces tests vérifient juste qu'aucune panique ne se produit
-    }
+    Ok(())
 }

@@ -1,4 +1,4 @@
-//! Module de gestion de la configuration du bot.
+//! Module de configuration du bot.
 
 pub mod args;
 pub mod settings;

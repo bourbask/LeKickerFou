@@ -12,19 +12,39 @@ categories = ["command-line-utilities"]
 readme = "README.md"
 
 [dependencies]
-serenity = { version = "0.12", features = ["client", "gateway", "http", "rustls_backend"] }
-tokio = { version = "1", features = ["full", "rt-multi-thread"] }
-tokio-cron-scheduler = "0.14"
-dotenv = "0.15"
-colored = "3.0"
-chrono = { version = "0.4", features = ["serde"] }
-anyhow = "1.0"
-thiserror = "2.0"
+# Discord
+serenity = { version = "0.12", default-features = false, features = [
+    "http",
+    "client",
+    "gateway",
+    "rustls_backend",
+    "model",
+    "cache",
+] }
+tokio = { version = "1", features = ["full", "macros", "rt-multi-thread"] }
+
+# Configuration et arguments CLI
+clap = { version = "4.4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-clap = { version = "4.0", features = ["derive"] }
+
+# Scheduling
+tokio-cron-scheduler = "0.14"
+
+# Gestion d'erreurs
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Utilitaires
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.17.0", features = ["v4"] }
+walkdir = "2.5.0"
+lazy_static = "1.5.0"
+dotenv = "0.15"
+colored = "3.0"
 rand = "0.9.1"
 
+# Développement
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"
@@ -38,3 +58,7 @@ strip = true
 [[bin]]
 name = "lekickerfou"
 path = "src/main.rs"
+
+[lib]
+name = "lekickerfou"
+path = "src/lib.rs"

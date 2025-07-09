@@ -77,6 +77,33 @@ impl ConfigManager {
         }
     }
 
+    /// Charge une configuration existante si le fichier existe, sinon retourne une erreur
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - Chemin vers le fichier de configuration
+    ///
+    /// # Returns
+    ///
+    /// La configuration chargée ou une erreur si le fichier n'existe pas
+    pub fn load_configuration_if_exists(&self, file_path: &str) -> Result<BotConfig> {
+        if !Path::new(file_path).exists() {
+            return Err(BotError::InvalidConfig(format!(
+                "Fichier de configuration introuvable: {}",
+                file_path
+            ))
+            .into());
+        }
+
+        let config_content = fs::read_to_string(file_path)
+            .context("Impossible de lire le fichier de configuration")?;
+
+        let config: BotConfig =
+            serde_json::from_str(&config_content).context("Fichier de configuration invalide")?;
+
+        Ok(config)
+    }
+
     /// Charge une configuration existante depuis un fichier
     fn load_existing_configuration(&self, args: &Args) -> Result<BotConfig> {
         let config_content = fs::read_to_string(&args.config_file)
@@ -145,7 +172,7 @@ impl ConfigManager {
     /// # Errors
     ///
     /// Retourne une erreur si impossible de sérialiser ou écrire le fichier
-    fn save_configuration(&self, config: &BotConfig, file_path: &str) -> Result<()> {
+    pub fn save_configuration(&self, config: &BotConfig, file_path: &str) -> Result<()> {
         let config_json = serde_json::to_string_pretty(config)
             .context("Impossible de sérialiser la configuration")?;
 

@@ -1,27 +1,29 @@
-//! Types d'erreurs personnalisés pour une gestion fine des cas d'échec.
+//! Types d'erreurs personnalisés pour le bot.
 
-use thiserror::Error;
+use std::fmt;
 
-/// Erreurs spécifiques au fonctionnement du bot Discord
-#[derive(Error, Debug)]
+/// Erreurs personnalisées du bot Discord
+#[derive(Debug)]
 pub enum BotError {
-    /// Configuration manquante ou incomplète
-    #[error("Configuration manquante: {0}")]
-    MissingConfig(String),
-
-    /// Le salon spécifié n'est pas un salon vocal
-    #[error("Le salon n'est pas un salon vocal")]
-    InvalidChannelType,
-
-    /// Le salon spécifié n'appartient pas à un serveur Discord
-    #[error("Le salon n'est pas un salon de serveur")]
-    NotGuildChannel,
-
-    /// Erreur provenant de l'API Discord via Serenity
-    #[error("Erreur Discord API: {0}")]
-    DiscordApi(#[from] serenity::Error),
-
-    /// Configuration invalide ou corrompue
-    #[error("Configuration invalide: {0}")]
+    /// Erreur de configuration
     InvalidConfig(String),
+    /// Configuration manquante
+    MissingConfig(String),
+    /// Erreur Discord API
+    DiscordError(String),
+    /// Erreur de permissions
+    PermissionError(String),
 }
+
+impl fmt::Display for BotError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BotError::InvalidConfig(msg) => write!(f, "Configuration invalide: {}", msg),
+            BotError::MissingConfig(msg) => write!(f, "Configuration manquante: {}", msg),
+            BotError::DiscordError(msg) => write!(f, "Erreur Discord: {}", msg),
+            BotError::PermissionError(msg) => write!(f, "Erreur de permission: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for BotError {}

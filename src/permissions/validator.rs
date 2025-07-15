@@ -1,7 +1,7 @@
 //! Validateur de permissions pour les interactions Discord.
 
 use anyhow::Result;
-use serenity::{all::Interaction, client::Context, model::guild::Member};
+use serenity::{all::Interaction, client::Context};
 
 use super::{PermissionLevel, PermissionResult, WhitelistManager};
 
@@ -79,8 +79,8 @@ impl PermissionValidator {
         PermissionResult::Unauthorized
     }
 
-    /// Récupère les rôles d'un membre
-    async fn get_member_roles(
+    /// Récupère les rôles d'un membre (méthode publique pour la commande check)
+    pub async fn get_member_roles(
         &self,
         ctx: &Context,
         guild_id: serenity::model::id::GuildId,

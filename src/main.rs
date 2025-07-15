@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use config::{Args, ConfigManager};
 use serenity::{
-    all::{CreateCommand, GatewayIntents, Interaction},
+    all::{CommandOptionType, CreateCommand, GatewayIntents, Interaction},
     client::{Client, Context as SerenityContext, EventHandler},
     model::gateway::Ready,
 };
@@ -84,7 +84,109 @@ impl EventHandler for DiscordEventHandler {
             CreateCommand::new("status").description("Affiche le statut du bot"),
             CreateCommand::new("kick").description("Déconnecte manuellement tous les utilisateurs"),
             CreateCommand::new("permissions")
-                .description("Affiche les permissions (Admin uniquement)"),
+                .description("Gestion des permissions (Admin uniquement)")
+                .add_option(serenity::all::CreateCommandOption::new(
+                    CommandOptionType::SubCommand,
+                    "list",
+                    "Affiche la liste complète des permissions",
+                ))
+                .add_option(
+                    serenity::all::CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "add-user",
+                        "Ajoute un utilisateur à la whitelist",
+                    )
+                    .add_sub_option(
+                        serenity::all::CreateCommandOption::new(
+                            CommandOptionType::User,
+                            "user",
+                            "L'utilisateur à ajouter",
+                        )
+                        .required(true),
+                    )
+                    .add_sub_option(
+                        serenity::all::CreateCommandOption::new(
+                            CommandOptionType::String,
+                            "level",
+                            "Niveau de permission",
+                        )
+                        .required(true)
+                        .add_string_choice("User", "User")
+                        .add_string_choice("Moderator", "Moderator")
+                        .add_string_choice("Admin", "Admin"),
+                    ),
+                )
+                .add_option(
+                    serenity::all::CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "add-role",
+                        "Ajoute un rôle à la whitelist",
+                    )
+                    .add_sub_option(
+                        serenity::all::CreateCommandOption::new(
+                            CommandOptionType::Role,
+                            "role",
+                            "Le rôle à ajouter",
+                        )
+                        .required(true),
+                    )
+                    .add_sub_option(
+                        serenity::all::CreateCommandOption::new(
+                            CommandOptionType::String,
+                            "level",
+                            "Niveau de permission",
+                        )
+                        .required(true)
+                        .add_string_choice("User", "User")
+                        .add_string_choice("Moderator", "Moderator")
+                        .add_string_choice("Admin", "Admin"),
+                    ),
+                )
+                .add_option(
+                    serenity::all::CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "remove-user",
+                        "Supprime un utilisateur de la whitelist",
+                    )
+                    .add_sub_option(
+                        serenity::all::CreateCommandOption::new(
+                            CommandOptionType::User,
+                            "user",
+                            "L'utilisateur à supprimer",
+                        )
+                        .required(true),
+                    ),
+                )
+                .add_option(
+                    serenity::all::CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "remove-role",
+                        "Supprime un rôle de la whitelist",
+                    )
+                    .add_sub_option(
+                        serenity::all::CreateCommandOption::new(
+                            CommandOptionType::Role,
+                            "role",
+                            "Le rôle à supprimer",
+                        )
+                        .required(true),
+                    ),
+                )
+                .add_option(
+                    serenity::all::CreateCommandOption::new(
+                        CommandOptionType::SubCommand,
+                        "check",
+                        "Vérifie les permissions d'un utilisateur",
+                    )
+                    .add_sub_option(
+                        serenity::all::CreateCommandOption::new(
+                            CommandOptionType::User,
+                            "user",
+                            "L'utilisateur à vérifier",
+                        )
+                        .required(true),
+                    ),
+                ),
         ];
 
         if let Err(e) = ctx.http.create_global_commands(&commands).await {

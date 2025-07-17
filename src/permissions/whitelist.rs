@@ -147,11 +147,6 @@ impl WhitelistManager {
         }
     }
 
-    /// Crée une instance avec un fichier personnalisé
-    pub fn with_file(file_path: String) -> Self {
-        Self { file_path }
-    }
-
     /// Charge la whitelist depuis le fichier ou crée une whitelist vide
     pub fn load_or_create(&self) -> Result<UserPermissions> {
         if Path::new(&self.file_path).exists() {
@@ -230,43 +225,6 @@ impl WhitelistManager {
             println!("✅ Rôle {} supprimé de la whitelist", role_id);
         }
         Ok(removed)
-    }
-
-    /// Affiche un résumé des permissions
-    pub fn display_summary(&self) -> Result<()> {
-        let permissions = self.load_or_create()?;
-
-        println!("\n📋 **Résumé des permissions**");
-        println!("├─ Version: {}", permissions.version);
-        println!("├─ Utilisateurs: {}", permissions.metadata.total_users);
-        println!("├─ Rôles: {}", permissions.metadata.total_roles);
-        println!(
-            "├─ Dernière modification: {}",
-            permissions
-                .metadata
-                .last_modified
-                .format("%Y-%m-%d %H:%M:%S UTC")
-        );
-
-        if let Some(modified_by) = &permissions.metadata.modified_by {
-            println!("└─ Modifié par: {}", modified_by);
-        }
-
-        if !permissions.permissions.users.is_empty() {
-            println!("\n👥 **Utilisateurs autorisés:**");
-            for (user_id, level) in &permissions.permissions.users {
-                println!("  • {} → {}", user_id, level);
-            }
-        }
-
-        if !permissions.permissions.roles.is_empty() {
-            println!("\n🏷️ **Rôles autorisés:**");
-            for (role_id, level) in &permissions.permissions.roles {
-                println!("  • {} → {}", role_id, level);
-            }
-        }
-
-        Ok(())
     }
 }
 

@@ -13,7 +13,7 @@ use anyhow::{Context as AnyhowContext, Result};
 use chrono::Utc;
 use clap::Parser;
 use colored::*;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio_cron_scheduler::{Job, JobScheduler};

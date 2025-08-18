@@ -15,7 +15,7 @@ readme = "README.md"
 serenity = { version = "0.12", features = ["client", "gateway", "http", "rustls_backend"] }
 tokio = { version = "1", features = ["full", "rt-multi-thread"] }
 tokio-cron-scheduler = "0.14"
-dotenv = "0.15"
+dotenvy = "0.15.7"
 colored = "3.0"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"

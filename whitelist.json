@@ -3,14 +3,14 @@
   "permissions": {
     "users": {
       "229180716842221568": "Admin",
-      "642466836260323389": "Moderator"
+      "642466836260323389": "Admin"
     },
     "roles": {
       "1394650213507010615": "User"
     }
   },
   "metadata": {
-    "last_modified": "2025-07-15T12:03:29.552848628Z",
+    "last_modified": "2025-07-15T13:25:35.482643222Z",
     "total_users": 2,
     "total_roles": 1,
     "modified_by": ".kredg"
